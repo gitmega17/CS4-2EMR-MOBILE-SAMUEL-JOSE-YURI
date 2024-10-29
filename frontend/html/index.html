@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkpoint Desenvolvimento de Casa Monitorada</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .planta {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            margin: 0 auto;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            background-color: #78b4f0;
+            padding: 20px;
+            /* Ajustado para dar espaço entre os cômodos */
+        }
+
+        .comodo {
+            border: 1px dashed #007bff;
+            border-radius: 10px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: calc(50% - 20px);
+            /* Largura de 50% menos a margem */
+            height: 300px;
+            /* Altura fixa para todos os cômodos */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 10px;
+            /* Margem para espaçamento entre os cômodos */
+        }
+
+        .sensor {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .sensor img {
+            width: 50px;
+            height: 50px;
+        }
+
+        .sensor-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+        }
+
+        .countdown {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+
+        .temperatura {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+
+    <script>
+        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTczMDE0MzkwNiwiZXhwIjoxNzMwMTQ3NTA2fQ.huiN061HdbeA_697icOu5J9UFT1vPVv9zKjra_j08cg";
+
+        const sensors = [
+            { sensor_id: 1, room: 'Cozinha', countdown: 30, lastTemperature: null },
+            { sensor_id: 2, room: 'Sala', countdown: 30, lastTemperature: null },
+            { sensor_id: 3, room: 'Quarto', countdown: 30, lastTemperature: null },
+            { sensor_id: 4, room: 'Escritório', countdown: 30, lastTemperature: null },
+        ];
+
+        // Função para simular a temperatura usando dados históricos de São Paulo
+        const simulateTemperature = () => {
+            const historicalTemperatures = [22, 23, 24, 25, 26, 27, 28, 29, 30]; // Exemplo de temperaturas históricas
+            const randomIndex = Math.floor(Math.random() * historicalTemperatures.length);
+            return historicalTemperatures[randomIndex]; // Retorna uma temperatura aleatória
+        };
+
+        const simulateHumidity = () => {
+            return (Math.random() * 50 + 30).toFixed(2); // Umidade entre 30% e 80%
+        };
+
+        // Função para autenticar e pegar o token JWT
+        const authenticate = async (sensor) => {
+            try {
+                const loginResponse = await fetch('http://localhost:3000/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'user',
+                        password: '123',
+                    }),
+                });
+
+                if (!loginResponse.ok) {
+                    throw new Error('Falha na autenticação');
+                }
+
+                const loginData = await loginResponse.json();
+                token = loginData.token; // Armazena o token JWT para ser usado depois
+                console.log(`Autenticado sensor ${sensor.sensor_id}, token obtido.`);
+            } catch (error) {
+                console.error(`Erro ao autenticar o sensor ${sensor.room}:`, error.message);
+            }
+        };
+
+        // Função para enviar dados do sensor para o backend
+        const sendData = async (sensor) => {
+            try {
+                if (!token) {
+                    await authenticate(sensor); // Autentica se o token não existir
+                }
+
+                const temperatura = simulateTemperature();
+                const umidade = simulateHumidity();
+
+                await fetch('http://localhost:3000/dados-sensores', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`, // Usa o token no cabeçalho
+                    },
+                    body: JSON.stringify({
+                        sensor_id: sensor.sensor_id,
+                        temperatura: temperatura,
+                        umidade: umidade,
+                    }),
+                });
+
+                // Atualiza a última temperatura medida
+                sensor.lastTemperature = temperatura;
+
+                // Atualiza a interface
+                document.getElementById(`temperatura-${sensor.sensor_id}`).textContent = `${temperatura} °C`;
+                console.log(`Dados enviados do sensor ${sensor.room}: Temperatura = ${temperatura}, Umidade = ${umidade}`);
+            } catch (error) {
+                console.error(`Erro ao enviar dados do sensor ${sensor.room}:`, error.message);
+            }
+        };
+
+        // Função para atualizar o contador e enviar dados periodicamente
+        const updateCountdown = () => {
+            sensors.forEach(sensor => {
+                const countdownElement = document.getElementById(`countdown-${sensor.sensor_id}`);
+
+                if (sensor.countdown > 0) {
+                    sensor.countdown--;
+                    countdownElement.textContent = `Próximo envio automático em ${sensor.countdown} segundos`;
+                } else {
+                    sendData(sensor);
+                    sensor.countdown = 60;
+                    countdownElement.textContent = `Próximo envio automático em ${sensor.countdown} segundos`;
+                }
+            });
+        };
+
+        // Função para enviar dados manualmente ao clicar no botão
+        const handleSendButtonClick = (sensorId) => {
+            const sensor = sensors.find(s => s.sensor_id === sensorId);
+            sendData(sensor);
+            sensor.countdown = 60;
+            document.getElementById(`countdown-${sensor.sensor_id}`).textContent = `Próximo envio automático em ${sensor.countdown} segundos`;
+        };
+
+        setInterval(updateCountdown, 1000); // Atualiza o contador a cada 1 segundo
+    </script>
+</head>
+
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">Desenvolvimento de Casa Monitorada</h1>
+        <h3 class="text-center mb-4">Challenge Sprint 4</h3>
+        <h4 class="text-center mb-4">José Manuel - Samuel Victor - Yuri Yve</h4>
+        <p class="text-center mb-5">Cada sensor enviará dados automaticamente a cada 60 segundos ou manualmente ao
+            clicar no botão correspondente.</p>
+
+        <div class="planta">
+            <div id="cozinha" class="comodo">
+                <h3 class="text-center">Cozinha</h3>
+                <div class="sensor">
+                    <img src="images/cozinha.png" alt="Sensor">
+                    <p id="countdown-1" class="countdown">Próximo envio automático em 60 segundos</p>
+                    <p id="temperatura-1" class="temperatura">0 °C</p>
+                    <button class="btn btn-primary sensor-button" onclick="handleSendButtonClick(1)">+</button>
+                </div>
+            </div>
+
+            <div id="sala" class="comodo">
+                <h3 class="text-center">Sala</h3>
+                <div class="sensor">
+                    <img src="images/sala.png" alt="Sensor">
+                    <p id="countdown-2" class="countdown">Próximo envio automático em 60 segundos</p>
+                    <p id="temperatura-2" class="temperatura">0 °C</p>
+                    <button class="btn btn-primary sensor-button" onclick="handleSendButtonClick(2)">+</button>
+                </div>
+            </div>
+
+            <div id="quarto" class="comodo">
+                <h3 class="text-center">Quarto</h3>
+                <div class="sensor">
+                    <img src="images/quarto.png" alt="Sensor">
+                    <p id="countdown-3" class="countdown">Próximo envio automático em 60 segundos</p>
+                    <p id="temperatura-3" class="temperatura">0 °C</p>
+                    <button class="btn btn-primary sensor-button" onclick="handleSendButtonClick(3)">+</button>
+                </div>
+            </div>
+
+            <div id="escritorio" class="comodo">
+                <h3 class="text-center">Escritório</h3>
+                <div class="sensor">
+                    <img src="images/escritorio.png" alt="Sensor">
+                    <p id="countdown-4" class="countdown">Próximo envio automático em 60 segundos</p>
+                    <p id="temperatura-4" class="temperatura">0 °C</p>
+                    <button class="btn btn-primary sensor-button" onclick="handleSendButtonClick(4)">+</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
